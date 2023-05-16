@@ -26,7 +26,7 @@ app.get(baseaddress + "/channels/user", (req, res) => {
         WHERE users.user_id = ?
         `,
         [req.body.userId],
-         (err, rows) => {
+        (err, rows) => {
         if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
         res.status(200).json({success: true, data: rows})
     })
@@ -37,7 +37,7 @@ app.post(baseaddress + "/channels/create", (req, res) => {
         INSERT INTO channels (channel_name, owner) VALUES (?, ?)
         `,
         [req.body.channelName, req.body.userId],
-         (err) => {
+        (err) => {
         if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
         res.status(201).json({success: true, msg: "Channel created."})
     })
@@ -48,18 +48,64 @@ app.post(baseaddress + "/channels/subscribe", (req, res) => {
         INSERT INTO subscriptions (user_id, channel_id) VALUES (?, ?)
         `,
         [req.body.userId, req.body.channelId],
-         (err) => {
+        (err) => {
         if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
         res.status(201).json({success: true, msg: "Subscription added."})
     })
 })
 
-app.get(baseaddress + "/channels/messgaes", (req, res) => { // kanalId
-    // hämta alla meddelanden i en kanal
+app.get(baseaddress + "/channels/messages", (req, res) => {
+    let sort = 'DESC'
+    if(req.query.sort === 'oldest') sort = 'ASC'
+    // console.log(req.query, )
+    db.all(`
+        SELECT * FROM messages_channels
+        JOIN messages ON messages_channels.message_id = messages.message_id
+        WHERE messages_channels.channel_id = ?
+        ORDER BY createdAt ${sort}
+        `,
+        [req.body.channelId],
+        (err, rows) => {
+        if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
+        res.status(200).json({
+            success: true,
+            data: rows.map(item => ({...item, createdAt: new Date(item.createdAt).toLocaleString()}))
+        })
+    })
 })
 
-app.post(baseaddress + "/channels/messages/create", (req, res) => { // userID, title, text, channelIDArray
-    // skapa meddelande
+app.post(baseaddress + "/channels/messages/create", (req, res) => {
+    db.all(`
+        SELECT * FROM subscriptions
+        WHERE user_id = ?
+        `,
+        [req.body.userId],
+        (err, rows) => {
+        if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
+        let channels = rows.map(row => row.channel_id)
+        let channelsToPostTo  = req.body.channels.filter(item => channels.includes(item))
+        if(channelsToPostTo.length !== 0) {
+            db.run(`
+                INSERT INTO messages (user_id, title, text, createdAt)
+                VALUES (?, ?, ?, ?)
+            `, [req.body.userId, req.body.title, req.body.text, Date.now()],
+            function(err) {
+                if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
+                console.log(this.lastID)
+                for(let i = 0; i < channelsToPostTo.length; i++) {
+                    db.run(`
+                        INSERT INTO messages_channels (message_id, channel_id)
+                        VALUES (?, ?)
+                    `,
+                    [this.lastID, channelsToPostTo[i]],
+                    (err) => {
+                        if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
+                    })
+                }
+                res.status(200).json({success: true, msg: "Message added."})
+            })
+        }
+    })
 })
 
 app.listen(PORT, () => {
