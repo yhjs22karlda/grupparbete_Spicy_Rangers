@@ -18,7 +18,6 @@ app.get(baseaddress + "/channels", (req, res) => {
 })
 
 app.get(baseaddress + "/channels/user", (req, res) => {
-    console.log(req.body.userId)
     db.all(`
         SELECT channels.channel_id, channels.channel_name, users.username as owner FROM subscriptions
         JOIN channels ON subscriptions.channel_id = channels.channel_id
@@ -57,7 +56,6 @@ app.post(baseaddress + "/channels/subscribe", (req, res) => {
 app.get(baseaddress + "/channels/messages", (req, res) => {
     let sort = 'DESC'
     if(req.query.sort === 'oldest') sort = 'ASC'
-    // console.log(req.query, )
     db.all(`
         SELECT * FROM messages_channels
         JOIN messages ON messages_channels.message_id = messages.message_id
@@ -91,7 +89,6 @@ app.post(baseaddress + "/channels/messages/create", (req, res) => {
             `, [req.body.userId, req.body.title, req.body.text, Date.now()],
             function(err) {
                 if(err) res.status(err.statusCode || 500).json({success: false, msg: err.message})
-                console.log(this.lastID)
                 for(let i = 0; i < channelsToPostTo.length; i++) {
                     db.run(`
                         INSERT INTO messages_channels (message_id, channel_id)
